@@ -1,0 +1,11 @@
+{
+  "name": "playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx main.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}

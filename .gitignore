@@ -1,0 +1,75 @@
+# Turborepo & Turbo cache
+.turbo/
+**/.turbo/
+
+# Node
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+.next/
+**/.next/
+coverage/
+**/coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+turbo-build.log
+**/turbo-build.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# Package manager
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Test
+*.test.*
+*.spec.*
+*.log
+**/*.log
+
+# TypeScript
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Misc
+*.local
+*.cache
+.cache/
+**/.cache/
+*.tgz
+
+# Mac system files
+.AppleDouble
+.LSOverride
+
+# Windows system files
+ehthumbs.db
+Desktop.ini
+
+apps/playground/dist/
+apps/playground/build/

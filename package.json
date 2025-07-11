@@ -1,0 +1,22 @@
+{
+  "name": "zeph",
+  "version": "0.0.1",
+  "description": "good stuff i think",
+  "main": "index.js",
+  "packageManager": "npm@10.9.2",
+  "types": "dist/index.d.ts",
+  "workspaces": [
+    "packages/*",
+    "playground/*"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "turbo run build",
+    "dev": "turbo run dev"
+  },
+  "author": "Tunahan Gündüz",
+  "license": "ISC",
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  }
+}
