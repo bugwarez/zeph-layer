@@ -28,8 +28,8 @@ All errors thrown by the client are instances of `ZephHttpError`, which extends 
 
 ## **Error Codes**
 
-Each error thrown by zeph-http includes a `code` property for robust, programmatic error handling. Here are all possible codes and when they occur:
 
+Each error thrown by zeph-http includes a `code` property for robust, programmatic error handling. Here are all possible codes and when they occur:
 | Code           | Scenario/When it Occurs                                 | Example Message                              |
 |----------------|--------------------------------------------------------|----------------------------------------------|
 | `EVALIDATION`  | Request config failed Zod validation                   | "Request config must include a valid 'path' string." |
@@ -42,6 +42,19 @@ Each error thrown by zeph-http includes a `code` property for robust, programmat
 | `EINTERCEPTOR` | Error thrown in a request/response interceptor         | "[request interceptor #0] ..."              |
 | `EJSONPARSE`   | Response body is not valid JSON                        | "Failed to parse JSON response"             |
 | `ETOKENREFRESH`| Token refresh logic failed (if implemented in interceptor) | "Token refresh failed"                  |
+
+---
+| Scenario | Error Message / Code | When it Happens |
+|----------|---------------------|-----------------|
+| **Body with GET/HEAD** | `"A body is not allowed for GET/HEAD requests."`, code: `"EMISUSE"` | Body sent with GET/HEAD |
+| **Duplicate headers** | Console warning | Same header in default and per-request |
+| **Timeout** | `"Request timed out after X ms"` | Request exceeded `timeoutMs` | ✔️ |
+| **User cancellation** | `"Request was cancelled by the user."` | User aborted request via `AbortController` |
+| **Network/CORS error** | `"Network error or CORS error..."` | Network unreachable, CORS, DNS, etc. |
+| **HTTP error (non-2xx)** | `"HTTP Error"` | Server returned non-2xx status |
+| **Interceptor error** | `[request interceptor #0] ...` | Error thrown in interceptor |
+| **JSON parse error** | `"Failed to parse JSON response"` | Response body is not valid JSON |
+| **Token refresh failure** | User-defined | If implemented in interceptor | ✔️ (user-defined) |
 
 ---
 
