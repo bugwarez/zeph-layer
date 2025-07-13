@@ -1,0 +1,121 @@
+# Error Handling
+
+Your HTTP client provides robust, developer-friendly, and production-ready error handling that matches or exceeds the best libraries in the ecosystem (including Axios). This section documents all error shapes, codes, and best practices for handling errors in your app.
+
+---
+
+## **Error Object: `ZephHttpError`**
+
+All errors thrown by the client are instances of `ZephHttpError`, which extends the native `Error` class and includes rich context for debugging and programmatic handling.
+
+### **Properties**
+
+| Property            | Type                                 | Description                                                                 |
+|---------------------|--------------------------------------|-----------------------------------------------------------------------------|
+| `name`              | `string`                             | Always `"ZephHttpError"`                                                    |
+| `message`           | `string`                             | Human-friendly, actionable error message                                    |
+| `status`            | `number | undefined`                | HTTP status code (if available)                                             |
+| `data`              | `any`                                | Response data, raw response, or validation issues (if available)            |
+| `headers`           | `Record<string, string> | undefined`| Response headers (if available)                                             |
+| `request`           | `ZephRequestConfig | undefined`     | The request config that caused the error                                    |
+| `cause`             | `unknown`                            | The original error, if any (e.g., network, JSON parse, etc.)                |
+| `interceptorType`   | `"request" | "response" | undefined`| If error was thrown in an interceptor, which type                           |
+| `interceptorIndex`  | `number | undefined`                | Index of the interceptor that threw the error                               |
+| `isZephHttpError`   | `true`                               | Always true for this error type                                             |
+---
+
+## **Error Scenarios and Codes**
+
+| Scenario                        | Error Message / Code                | When it Happens                                
+|----------------------------------|-------------------------------------|-------------------------------------------------|-------------------|
+| **Body with GET/HEAD**           | `"A body is not allowed for GET/HEAD requests."`, code: `"EMISUSE"` | Body sent with GET/HEAD                                    |
+| **Duplicate headers**            | Console warning                     | Same header in default and per-request          | ❌                |
+| **Timeout**                      | `"Request timed out after X ms"` | Request exceeded `timeoutMs`                    | ✔️                |
+| **User cancellation**            | `"Request was cancelled by the user."`  | User aborted request via `AbortController`      | ✔️                |
+| **Network/CORS error**           | `"Network error or CORS error..."`  | Network unreachable, CORS, DNS, etc.            | ✔️                |
+| **HTTP error (non-2xx)**         | `"HTTP Error"`     | Server returned non-2xx status                  | ✔️                |
+| **Interceptor error**            | `[request interceptor #0] ...` | Error thrown in interceptor                     | ❌                |
+| **JSON parse error**             | `"Failed to parse JSON response"` | Response body is not valid JSON                 | ❌                |
+| **Token refresh failure**        | User-defined                        | If implemented in interceptor                   | ✔️ (user-defined) |
+
+---
+
+## **Error Handling Example**
+
+```ts
+import { ZephHttpError } from "zeph-http";
+
+const client =  createZephClient({
+baseURL:  "http://your-api.com",
+});
+
+try {
+  await client.request({ path: "/api/data" });
+} catch (error) {
+  if (error instanceof ZephHttpError) {
+    // Human-friendly message
+    console.error(error.message);
+
+    // Programmatic handling
+    switch (error.code) {
+      case "ETIMEDOUT":
+        // Handle timeout
+        break;
+      case "ECANCELLED":
+        // Handle user cancellation
+        break;
+      case "EHTTP":
+        // Handle HTTP error (check error.status)
+        break;
+      // ...other codes
+    }
+
+    // Debugging info
+    console.error("Status:", error.status);
+    console.error("Headers:", error.headers);
+    console.error("Request:", error.request);
+    console.error("Cause:", error.cause);
+    if (error.interceptorType) {
+      console.error(
+        `Error in ${error.interceptorType} interceptor #${error.interceptorIndex}`
+      );
+    }
+  } else {
+    // Handle unexpected errors
+    console.error("Unknown error:", error);
+  }
+}
+```
+
+---
+
+## **Features**
+
+| Feature/Scenario         | Zeph HTTP Client 
+|-------------------------|------------------
+| Config validation       | ✔️ (Zod, DX)     
+| Body with GET/HEAD      | ✔️ (guard)       
+| Duplicate headers warn  | ✔️ (warn)        
+| Timeout                 | ✔️               
+| User cancellation       | ✔️               
+| Network/CORS error DX   | ✔️ (actionable)  
+| HTTP error context      | ✔️               
+| Interceptor error DX    | ✔️ (context)     
+| JSON parse error DX     | ✔️ (raw text)    
+| Error codes             | ✔️ (optional)    
+| Error serialization     | ✔️               
+
+---
+
+## **Best Practices**
+
+- Always check for `instanceof ZephHttpError` in your error handling.
+- Log or display the `message` for user-friendly feedback.
+- Use `data`, `headers`, `status`, and `request` for debugging and advanced handling.
+
+---
+
+## **Extending Error Handling**
+
+- Use interceptors to implement advanced flows (e.g., token refresh, retry logic).
+- All errors thrown by the client are consistent, serializable, and easy to debug.
