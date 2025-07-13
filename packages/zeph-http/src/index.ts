@@ -18,10 +18,23 @@ import {
   warnDuplicateHeaders,
 } from "./core/utils/guards";
 import { createTimeoutSignal } from "./core/utils/timeout";
+import { RequestWithCancelHandle } from "./core/types/common";
 
 export function createZephClient(defaultConfig: ZephClientConfig = {}) {
   const interceptors: Interceptors = createInterceptorManager();
 
+  /**
+   * Tracks all in-flight AbortControllers for global cancellation.
+   */
+  const activeControllers = new Set<AbortController>();
+
+  /**
+   * Sends an HTTP request using the Zeph client configuration.
+   * Handles per-request and global cancellation, timeout, and interceptors.
+   * @template T - The expected response data type.
+   * @param {ZephRequestConfig} config - The request configuration.
+   * @returns {Promise<ZephResponse<T>>} - The response promise.
+   */
   async function request<T = any>(
     config: ZephRequestConfig
   ): Promise<ZephResponse<T>> {
@@ -85,20 +98,23 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
       }
     }
 
-    //! Handling Timeout and User Cancellation
-    let signal: AbortSignal | undefined = undefined;
-    let cancel: (() => void) | undefined = undefined;
-    if (finalConfig.signal && finalConfig.timeoutMs) {
+    // --- Cancellation & Timeout Handling ---
+    const internalController = new AbortController();
+    let timeoutSignal: AbortSignal | undefined = undefined;
+    let timeoutCancel: (() => void) | undefined = undefined;
+    if (finalConfig.timeoutMs) {
       const timeout = createTimeoutSignal(finalConfig.timeoutMs);
-      signal = combineAbortSignals([finalConfig.signal, timeout.signal]);
-      cancel = timeout.cancel;
-    } else if (finalConfig.signal) {
-      signal = finalConfig.signal;
-    } else {
-      const timeout = createTimeoutSignal(finalConfig.timeoutMs);
-      signal = timeout.signal;
-      cancel = timeout.cancel;
+      timeoutSignal = timeout.signal;
+      timeoutCancel = timeout.cancel;
     }
+    // Combine user signal, timeout signal, and internal controller
+    const signal = combineAbortSignals([
+      finalConfig.signal,
+      timeoutSignal,
+      internalController.signal,
+    ]);
+    // Track this controller for global cancel
+    activeControllers.add(internalController);
 
     try {
       const res = await fetch(url, {
@@ -108,7 +124,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
         signal,
       });
 
-      if (cancel) cancel();
+      if (timeoutCancel) timeoutCancel();
 
       let data: T | undefined;
       const resHeaders: Record<string, string> = {};
@@ -162,7 +178,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
 
       return response;
     } catch (err: any) {
-      if (cancel) cancel();
+      if (timeoutCancel) timeoutCancel();
 
       if (err?.name === "AbortError") {
         if (
@@ -210,12 +226,45 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
         request: finalConfig,
         code: "ENETWORK",
       });
+    } finally {
+      // Always clean up controller from the set
+      activeControllers.delete(internalController);
     }
+  }
+
+  /**
+   * Ergonomic per-request cancellation: returns a handle with promise, cancel, and signal.
+   * @template T - The expected response data type.
+   * @param {ZephRequestConfig} config - The request configuration.
+   * @returns {RequestWithCancelHandle<T>} - The handle for the request.
+   */
+  request.withCancel = function withCancel<T = any>(
+    config: ZephRequestConfig
+  ): RequestWithCancelHandle<T> {
+    const controller = new AbortController();
+    const mergedConfig = { ...config, signal: controller.signal };
+    return {
+      promise: request<T>(mergedConfig),
+      cancel: () => controller.abort(),
+      signal: controller.signal,
+    };
+  };
+
+  /**
+   * Cancels all in-flight requests for this client instance.
+   * Aborts all tracked AbortControllers and clears the set.
+   */
+  function cancelAll(): void {
+    for (const controller of activeControllers) {
+      controller.abort();
+    }
+    activeControllers.clear();
   }
 
   return {
     request,
     interceptors,
+    cancelAll,
   };
 }
 
