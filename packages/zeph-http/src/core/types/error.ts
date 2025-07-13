@@ -21,6 +21,7 @@ export class ZephHttpError<T = any> extends Error {
   public cause?: unknown;
   public interceptorType?: "request" | "response";
   public interceptorIndex?: number;
+  public code?: string;
 
   /**
    * Creates a new ZephHttpError.
@@ -42,6 +43,7 @@ export class ZephHttpError<T = any> extends Error {
       cause?: unknown;
       interceptorType?: "request" | "response";
       interceptorIndex?: number;
+      code?: string;
     } = {}
   ) {
     super(message);
@@ -50,5 +52,6 @@ export class ZephHttpError<T = any> extends Error {
     if (options.interceptorType) this.interceptorType = options.interceptorType;
     if (options.interceptorIndex !== undefined)
       this.interceptorIndex = options.interceptorIndex;
+    if (options.code) this.code = options.code;
   }
 }

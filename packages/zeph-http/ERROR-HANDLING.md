@@ -22,25 +22,30 @@ All errors thrown by the client are instances of `ZephHttpError`, which extends 
 | `interceptorType`   | `"request" | "response" | undefined`| If error was thrown in an interceptor, which type                           |
 | `interceptorIndex`  | `number | undefined`                | Index of the interceptor that threw the error                               |
 | `isZephHttpError`   | `true`                               | Always true for this error type                                             |
----
-
-## **Error Scenarios and Codes**
-
-| Scenario                        | Error Message / Code                | When it Happens                                
-|----------------------------------|-------------------------------------|-------------------------------------------------|-------------------|
-| **Body with GET/HEAD**           | `"A body is not allowed for GET/HEAD requests."`, code: `"EMISUSE"` | Body sent with GET/HEAD                                    |
-| **Duplicate headers**            | Console warning                     | Same header in default and per-request          | ❌                |
-| **Timeout**                      | `"Request timed out after X ms"` | Request exceeded `timeoutMs`                    | ✔️                |
-| **User cancellation**            | `"Request was cancelled by the user."`  | User aborted request via `AbortController`      | ✔️                |
-| **Network/CORS error**           | `"Network error or CORS error..."`  | Network unreachable, CORS, DNS, etc.            | ✔️                |
-| **HTTP error (non-2xx)**         | `"HTTP Error"`     | Server returned non-2xx status                  | ✔️                |
-| **Interceptor error**            | `[request interceptor #0] ...` | Error thrown in interceptor                     | ❌                |
-| **JSON parse error**             | `"Failed to parse JSON response"` | Response body is not valid JSON                 | ❌                |
-| **Token refresh failure**        | User-defined                        | If implemented in interceptor                   | ✔️ (user-defined) |
+| `code`              | `string | undefined`                 | Error code for programmatic handling (see below)                            |
 
 ---
 
-## **Error Handling Example**
+## **Error Codes**
+
+Each error thrown by zeph-http includes a `code` property for robust, programmatic error handling. Here are all possible codes and when they occur:
+
+| Code           | Scenario/When it Occurs                                 | Example Message                              |
+|----------------|--------------------------------------------------------|----------------------------------------------|
+| `EVALIDATION`  | Request config failed Zod validation                   | "Request config must include a valid 'path' string." |
+| `EMISUSE`      | Misuse of API (e.g., body with GET/HEAD)               | "A body is not allowed for GET/HEAD requests." |
+| `EDUPLICATEHEADER` | Duplicate header in default and per-request config  | Console warning                              |
+| `ETIMEDOUT`    | Request timed out (timeoutMs exceeded)                 | "Request timed out after X ms"              |
+| `ECANCELLED`   | User cancelled the request via AbortController         | "Request was cancelled by the user."        |
+| `ENETWORK`     | Network error, DNS error, or CORS error                | "Network error or CORS error..."            |
+| `EHTTP`        | HTTP error (non-2xx status code)                       | "HTTP Error"                                |
+| `EINTERCEPTOR` | Error thrown in a request/response interceptor         | "[request interceptor #0] ..."              |
+| `EJSONPARSE`   | Response body is not valid JSON                        | "Failed to parse JSON response"             |
+| `ETOKENREFRESH`| Token refresh logic failed (if implemented in interceptor) | "Token refresh failed"                  |
+
+---
+
+### **How to Handle Errors Programmatically**
 
 ```ts
 import { ZephHttpError } from "zeph-http";
@@ -53,23 +58,33 @@ try {
   await client.request({ path: "/api/data" });
 } catch (error) {
   if (error instanceof ZephHttpError) {
-    // Human-friendly message
-    console.error(error.message);
-
-    // Programmatic handling
     switch (error.code) {
+      case "EVALIDATION":
+        // Handle config validation error
+        break;
+      case "EJSONPARSE":
+        // Handle JSON parse error
+        break;
+      case "EHTTP":
+        // Handle HTTP error (check error.status)
+        break;
       case "ETIMEDOUT":
         // Handle timeout
         break;
       case "ECANCELLED":
         // Handle user cancellation
         break;
-      case "EHTTP":
-        // Handle HTTP error (check error.status)
+      case "ENETWORK":
+        // Handle network/CORS error
+        break;
+      case "EINTERCEPTOR":
+        // Handle interceptor error
+        break;
+      case "ETOKENREFRESH":
+        // Handle token refresh failure
         break;
       // ...other codes
     }
-
     // Debugging info
     console.error("Status:", error.status);
     console.error("Headers:", error.headers);
@@ -86,6 +101,22 @@ try {
   }
 }
 ```
+
+---
+
+## **Error Scenarios and Codes**
+
+| Scenario                        | Error Message / Code                | When it Happens                                
+|----------------------------------|-------------------------------------|-------------------------------------------------|-------------------|
+| **Body with GET/HEAD**           | `"A body is not allowed for GET/HEAD requests."`, code: `"EMISUSE"` | Body sent with GET/HEAD                                    |
+| **Duplicate headers**            | Console warning                     | Same header in default and per-request          | ❌                |
+| **Timeout**                      | `"Request timed out after X ms"` | Request exceeded `timeoutMs`                    | ✔️                |
+| **User cancellation**            | `"Request was cancelled by the user."`  | User aborted request via `AbortController`      | ✔️                |
+| **Network/CORS error**           | `"Network error or CORS error..."`  | Network unreachable, CORS, DNS, etc.            | ✔️                |
+| **HTTP error (non-2xx)**         | `"HTTP Error"`     | Server returned non-2xx status                  | ✔️                |
+| **Interceptor error**            | `[request interceptor #0] ...` | Error thrown in interceptor                     | ❌                |
+| **JSON parse error**             | `"Failed to parse JSON response"` | Response body is not valid JSON                 | ❌                |
+| **Token refresh failure**        | User-defined                        | If implemented in interceptor                   | ✔️ (user-defined) |
 
 ---
 
@@ -110,6 +141,7 @@ try {
 ## **Best Practices**
 
 - Always check for `instanceof ZephHttpError` in your error handling.
+- Use the `code` property for programmatic error handling.
 - Log or display the `message` for user-friendly feedback.
 - Use `data`, `headers`, `status`, and `request` for debugging and advanced handling.
 
@@ -119,3 +151,4 @@ try {
 
 - Use interceptors to implement advanced flows (e.g., token refresh, retry logic).
 - All errors thrown by the client are consistent, serializable, and easy to debug.
+- You can add custom error codes or properties as needed for your app.
