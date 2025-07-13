@@ -120,7 +120,7 @@ try {
 ## **Error Scenarios and Codes**
 
 | Scenario                        | Error Message / Code                | When it Happens                                
-|----------------------------------|-------------------------------------|-------------------------------------------------|-------------------|
+|----------------------------------|-------------------------------------|-------------------------------------------------|
 | **Body with GET/HEAD**           | `"A body is not allowed for GET/HEAD requests."`, code: `"EMISUSE"` | Body sent with GET/HEAD                                    |
 | **Duplicate headers**            | Console warning                     | Same header in default and per-request          | ❌                |
 | **Timeout**                      | `"Request timed out after X ms"` | Request exceeded `timeoutMs`                    | ✔️                |
