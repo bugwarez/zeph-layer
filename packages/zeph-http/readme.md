@@ -28,6 +28,7 @@ Feel free contribute and open issue tickets to suggest features and report bugs.
 - ✅ **Zod validation** for request configs
 - ✅ **Request & response interceptors** (with error context)
 - ✅ **Timeouts** and **user-initiated cancellation**
+- ✅ **Ergonomic per-request cancellation handles** (`withCancel`)
 - ✅ **Automatic Content-Type detection**
 - ✅ **Duplicate header warnings**
 - ✅ **Comprehensive error objects** (`ZephHttpError`)
@@ -115,6 +116,40 @@ await client.request({
   signal: controller.signal, // User cancellation
 });
 ```
+
+---
+
+### 🚦 Ergonomic Per-Request Cancellation: `withCancel`
+
+For even better DX, zeph-http provides an ergonomic handle for per-request cancellation—no need to manually create an AbortController:
+
+```ts
+const { promise, cancel, signal } = client.request.withCancel({
+  path: "/slow-endpoint",
+  timeoutMs: 5000,
+});
+
+// Cancel the request at any time:
+cancel();
+
+// Or just await the result:
+const result = await promise;
+```
+
+**Why is this better?**
+- No manual AbortController boilerplate
+- Cleaner, more discoverable API
+- Still supports advanced use (access to the signal)
+- Works seamlessly with timeouts and all other features
+
+**Comparison:**
+
+| Approach                | Code Example                                                                 |
+|-------------------------|------------------------------------------------------------------------------|
+| Manual AbortController  | `const controller = new AbortController();`<br>`client.request({ signal: controller.signal })`<br>`controller.abort();` |
+| `withCancel` handle     | `const { promise, cancel } = client.request.withCancel(config);`<br>`cancel();`                |
+
+**Note:** You can use either approach—choose what fits your style and use case!
 
 ---
 
