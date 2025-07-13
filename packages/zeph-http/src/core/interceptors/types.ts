@@ -1,4 +1,4 @@
-import { NormalizedZephRequestConfig, ZephRequestConfig } from "../..";
+import { NormalizedZephRequestConfig } from "../types/http";
 
 export type RequestInterceptor = (
   config: NormalizedZephRequestConfig
