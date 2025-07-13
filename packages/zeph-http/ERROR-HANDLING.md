@@ -165,3 +165,49 @@ try {
 - Use interceptors to implement advanced flows (e.g., token refresh, retry logic).
 - All errors thrown by the client are consistent, serializable, and easy to debug.
 - You can add custom error codes or properties as needed for your app.
+
+---
+
+## **Error Serialization: .toJSON()**
+
+Every `ZephHttpError` includes a `.toJSON()` method for easy serialization and logging. This is especially useful for logging errors, sending them to monitoring services, or debugging in distributed systems.
+
+**Example usage:**
+
+```ts
+import { ZephHttpError } from "zeph-http";
+
+const client =  createZephClient({
+baseURL:  "http://your-api.com",
+});
+
+try {
+  await client.request({ path: "/api/data" });
+} catch (error) {
+  if (error instanceof ZephHttpError) {
+    console.log(JSON.stringify(error)); // Uses .toJSON()
+    // or
+    console.log(error.toJSON());
+  }
+}
+```
+
+**Example output:**
+```json
+{
+  "name": "ZephHttpError",
+  "message": "Request timed out after 5000 ms",
+  "code": "ETIMEDOUT",
+  "status": undefined,
+  "data": undefined,
+  "headers": undefined,
+  "request": { "path": "/api/data", ... },
+  "cause": { "name": "AbortError", ... },
+  "interceptorType": undefined,
+  "interceptorIndex": undefined,
+  "isZephHttpError": true,
+  "stack": "...stack trace..."
+}
+```
+
+---

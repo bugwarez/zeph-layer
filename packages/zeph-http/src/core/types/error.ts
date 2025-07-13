@@ -54,4 +54,21 @@ export class ZephHttpError<T = any> extends Error {
       this.interceptorIndex = options.interceptorIndex;
     if (options.code) this.code = options.code;
   }
+
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      status: this.status,
+      data: this.data,
+      headers: this.headers,
+      request: this.request,
+      cause: this.cause,
+      interceptorType: this.interceptorType,
+      interceptorIndex: this.interceptorIndex,
+      isZephHttpError: this.isZephHttpError,
+      stack: this.stack,
+    };
+  }
 }

@@ -134,39 +134,21 @@ Every error includes a `code` property for robust, programmatic error handling. 
 - `EINTERCEPTOR` – Interceptor error
 - ...and more (see docs)
 
+#### Error Serialization
+
+Every `ZephHttpError` includes a `.toJSON()` method for easy logging and transport:
+
 ```ts
 try {
   await client.request({ path: "/api/data" });
 } catch (error) {
   if (error instanceof ZephHttpError) {
-    switch (error.code) {
-      case "EVALIDATION":
-        // Handle config validation error
-        break;
-      case "EJSONPARSE":
-        // Handle JSON parse error
-        break;
-      case "EHTTP":
-        // Handle HTTP error (check error.status)
-        break;
-      case "ETIMEDOUT":
-        // Handle timeout
-        break;
-      case "ECANCELLED":
-        // Handle user cancellation
-        break;
-      case "ENETWORK":
-        // Handle network/CORS error
-        break;
-      case "EINTERCEPTOR":
-        // Handle interceptor error
-        break;
-      // ...other codes
-    }
-    // See ERROR-HANDLING.md for all properties and codes!
+    console.log(JSON.stringify(error)); // Uses .toJSON()
   }
 }
 ```
+
+See [ERROR-HANDLING.md](./ERROR-HANDLING.md) for all properties, codes, and serialization details.
 
 ---
 
