@@ -31,6 +31,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
       throw new ZephHttpError(formatted, {
         request: config,
         data: parseResult.error.issues, //! raw issues for advanced use
+        code: "EVALIDATION",
       });
     }
     //! Applying request interceptors
@@ -127,6 +128,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           request: finalConfig,
           data: rawText,
           cause: jsonErr,
+          code: "EJSONPARSE",
         });
       }
 
@@ -138,6 +140,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           data,
           headers: resHeaders,
           request: finalConfig,
+          code: "EHTTP",
         });
       }
 
@@ -175,12 +178,14 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
             {
               request: finalConfig,
               cause: err,
+              code: "ETIMEDOUT",
             }
           );
         } else if (finalConfig.signal && finalConfig.signal.aborted) {
           throw new ZephHttpError("Request was cancelled by the user.", {
             request: finalConfig,
             cause: err,
+            code: "ECANCELLED",
           });
         } else if (finalConfig.timeoutMs) {
           throw new ZephHttpError(
@@ -188,6 +193,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
             {
               request: finalConfig,
               cause: err,
+              code: "ETIMEDOUT",
             }
           );
         }
@@ -202,6 +208,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
       throw new ZephHttpError("Network or Client Error", {
         cause: err,
         request: finalConfig,
+        code: "ENETWORK",
       });
     }
   }

@@ -122,12 +122,47 @@ await client.request({
 
 All errors thrown are instances of `ZephHttpError`—see [ERROR-HANDLING.md](./ERROR-HANDLING.md) for full details.
 
+### Error Codes for Programmatic Handling
+
+Every error includes a `code` property for robust, programmatic error handling. Example codes:
+- `EVALIDATION` – Config validation error
+- `EJSONPARSE` – JSON parse error
+- `EHTTP` – HTTP error (non-2xx)
+- `ETIMEDOUT` – Timeout
+- `ECANCELLED` – User cancellation
+- `ENETWORK` – Network/CORS error
+- `EINTERCEPTOR` – Interceptor error
+- ...and more (see docs)
+
 ```ts
 try {
   await client.request({ path: "/api/data" });
 } catch (error) {
   if (error instanceof ZephHttpError) {
-    console.error("Error:", error.message);
+    switch (error.code) {
+      case "EVALIDATION":
+        // Handle config validation error
+        break;
+      case "EJSONPARSE":
+        // Handle JSON parse error
+        break;
+      case "EHTTP":
+        // Handle HTTP error (check error.status)
+        break;
+      case "ETIMEDOUT":
+        // Handle timeout
+        break;
+      case "ECANCELLED":
+        // Handle user cancellation
+        break;
+      case "ENETWORK":
+        // Handle network/CORS error
+        break;
+      case "EINTERCEPTOR":
+        // Handle interceptor error
+        break;
+      // ...other codes
+    }
     // See ERROR-HANDLING.md for all properties and codes!
   }
 }
