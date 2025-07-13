@@ -193,16 +193,7 @@ try {
 - **Each retry is a real new attempt** (fresh timeout/cancellation signals)
 - **Error handling:** After all retries, the last error is thrown (with full context and cause chain)
 
-### Comparison: zeph-http vs Axios
 
-| Feature                | zeph-http         | Axios           |
-|------------------------|-------------------|-----------------|
-| Per-request retry      | ✔️ (`retry`)      | ❌ (needs plugin or manual) |
-| Custom retry delay     | ✔️ (`retryDelay`) | ❌ (needs plugin or manual) |
-| Exponential backoff    | ✔️ (function)     | ❌ (needs plugin or manual) |
-| Timeout retry support  | ✔️ (built-in)     | ❌ (manual)      |
-| Error context/cause    | ✔️                | ❌              |
-| TypeScript-first       | ✔️                | Partial         |
 
 **Why is this better?**
 - No plugins or wrappers needed—retry is first-class
@@ -266,6 +257,11 @@ See [ERROR-HANDLING.md](./ERROR-HANDLING.md) for all properties, codes, and seri
 | Error codes             | ✔️             | ✔️         |
 | Error serialization     | ✔️             | ✔️         |
 | Duplicate header warn   | ✔️             | ❌         |
+| Per-request retry      | ✔️ (`retry`)      | ❌ (needs plugin or manual) |
+| Custom retry delay     | ✔️ (`retryDelay`) | ❌ (needs plugin or manual) |
+| Exponential backoff    | ✔️ (function)     | ❌ (needs plugin or manual) |
+| Timeout retry support  | ✔️ (built-in)     | ❌ (manual)      |
+| Error context/cause    | ✔️                | ❌              |
 
 ---
 
