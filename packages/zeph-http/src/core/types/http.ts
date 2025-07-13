@@ -17,6 +17,14 @@ export interface ZephRequestConfig {
   body?: any;
   timeoutMs?: number;
   signal?: AbortSignal; //! User-initiated cancellation
+  /**
+   * Number of retry attempts for failed requests (default: 0)
+   */
+  retry?: number;
+  /**
+   * Delay between retries in ms, or a function (attempt, error) => ms
+   */
+  retryDelay?: number | ((attempt: number, error: any) => number);
 }
 
 export interface ZephResponse<T> {
@@ -31,4 +39,6 @@ export interface NormalizedZephRequestConfig
   headers: Record<string, string>;
   baseURL?: string;
   timeoutMs?: number;
+  retry?: number;
+  retryDelay?: number | ((attempt: number, error: any) => number);
 }

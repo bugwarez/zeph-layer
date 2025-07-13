@@ -30,7 +30,7 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
 
   /**
    * Sends an HTTP request using the Zeph client configuration.
-   * Handles per-request and global cancellation, timeout, and interceptors.
+   * Handles per-request and global cancellation, timeout, interceptors, and retry logic.
    * @template T - The expected response data type.
    * @param {ZephRequestConfig} config - The request configuration.
    * @returns {Promise<ZephResponse<T>>} - The response promise.
@@ -116,120 +116,153 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
     // Track this controller for global cancel
     activeControllers.add(internalController);
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers,
-        body: payload,
-        signal,
-      });
+    // --- Retry Logic ---
+    const maxRetries = finalConfig.retry ?? 0;
+    const retryDelay = finalConfig.retryDelay;
+    let attempt = 0;
+    let lastError: any;
+    while (attempt <= maxRetries) {
+      // --- Per-attempt signal setup ---
+      // Always create a new internal controller for tracking per attempt
+      const internalController = new AbortController();
+      let timeoutSignal: AbortSignal | undefined = undefined;
+      let timeoutCancel: (() => void) | undefined = undefined;
+      if (finalConfig.timeoutMs) {
+        const timeout = createTimeoutSignal(finalConfig.timeoutMs);
+        timeoutSignal = timeout.signal;
+        timeoutCancel = timeout.cancel;
+      }
+      // Combine user signal, timeout signal, and internal controller
+      const combinedSignal = combineAbortSignals([
+        finalConfig.signal,
+        timeoutSignal,
+        internalController.signal,
+      ]);
+      // Track this controller for global cancel
+      activeControllers.add(internalController);
 
-      if (timeoutCancel) timeoutCancel();
-
-      let data: T | undefined;
-      const resHeaders: Record<string, string> = {};
-
+      // Checking for abort before each attempt
+      if (combinedSignal && combinedSignal.aborted) {
+        activeControllers.delete(internalController);
+        throw new ZephHttpError("Request was cancelled by the user.", {
+          request: finalConfig,
+          code: "ECANCELLED",
+        });
+      }
       try {
-        data = await res.json();
-      } catch (jsonErr) {
-        let rawText: string | undefined;
-        try {
-          rawText = await res.text();
-        } catch {
-          rawText = undefined;
-        }
-        throw new ZephHttpError("Failed to parse JSON response", {
-          status: res.status,
-          headers: resHeaders,
-          request: finalConfig,
-          data: rawText,
-          cause: jsonErr,
-          code: "EJSONPARSE",
+        const res = await fetch(url, {
+          method,
+          headers,
+          body: payload,
+          signal: combinedSignal,
         });
-      }
 
-      res.headers.forEach((v, k) => (resHeaders[k] = v));
+        if (timeoutCancel) timeoutCancel();
+        activeControllers.delete(internalController);
 
-      if (!res.ok) {
-        throw new ZephHttpError("HTTP Error", {
-          status: res.status,
-          data,
-          headers: resHeaders,
-          request: finalConfig,
-          code: "EHTTP",
-        });
-      }
+        let data: T | undefined;
+        const resHeaders: Record<string, string> = {};
 
-      let response: ZephResponse<T> = {
-        data: data as T,
-        status: res.status,
-        headers: resHeaders,
-      };
-
-      //! Applying response success interceptors
-      for (let i = 0; i < interceptors.response.handlers.length; i++) {
-        const { onSuccess } = interceptors.response.handlers[i];
         try {
-          response = await onSuccess(response);
-        } catch (err) {
-          throw wrapInterceptorError(err, "response", i);
-        }
-      }
-
-      return response;
-    } catch (err: any) {
-      if (timeoutCancel) timeoutCancel();
-
-      if (err?.name === "AbortError") {
-        if (
-          finalConfig.timeoutMs &&
-          signal &&
-          signal.aborted &&
-          finalConfig.signal &&
-          finalConfig.signal.aborted
-        ) {
-          // Both signals aborted, prefer timeout message
-          throw new ZephHttpError(
-            `Request timed out after ${finalConfig.timeoutMs} ms`,
-            {
-              request: finalConfig,
-              cause: err,
-              code: "ETIMEDOUT",
-            }
-          );
-        } else if (finalConfig.signal && finalConfig.signal.aborted) {
-          throw new ZephHttpError("Request was cancelled by the user.", {
+          data = await res.json();
+        } catch (jsonErr) {
+          let rawText: string | undefined;
+          try {
+            rawText = await res.text();
+          } catch {
+            rawText = undefined;
+          }
+          throw new ZephHttpError("Failed to parse JSON response", {
+            status: res.status,
+            headers: resHeaders,
             request: finalConfig,
-            cause: err,
-            code: "ECANCELLED",
+            data: rawText,
+            cause: jsonErr,
+            code: "EJSONPARSE",
           });
-        } else if (finalConfig.timeoutMs) {
-          throw new ZephHttpError(
-            `Request timed out after ${finalConfig.timeoutMs} ms`,
-            {
+        }
+
+        res.headers.forEach((v, k) => (resHeaders[k] = v));
+
+        if (!res.ok) {
+          throw new ZephHttpError("HTTP Error", {
+            status: res.status,
+            data,
+            headers: resHeaders,
+            request: finalConfig,
+            code: "EHTTP",
+          });
+        }
+
+        let response: ZephResponse<T> = {
+          data: data as T,
+          status: res.status,
+          headers: resHeaders,
+        };
+
+        //! Applying response success interceptors
+        for (let i = 0; i < interceptors.response.handlers.length; i++) {
+          const { onSuccess } = interceptors.response.handlers[i];
+          try {
+            response = await onSuccess(response);
+          } catch (err) {
+            throw wrapInterceptorError(err, "response", i);
+          }
+        }
+        return response;
+      } catch (err: any) {
+        if (timeoutCancel) timeoutCancel();
+        activeControllers.delete(internalController);
+        if (err?.name === "AbortError") {
+          if (finalConfig.timeoutMs && timeoutSignal && timeoutSignal.aborted) {
+            err = new ZephHttpError(
+              `Request timed out after ${finalConfig.timeoutMs} ms`,
+              {
+                request: finalConfig,
+                cause: err,
+                code: "ETIMEDOUT",
+              }
+            );
+          } else if (combinedSignal && combinedSignal.aborted) {
+            err = new ZephHttpError("Request was cancelled by the user.", {
               request: finalConfig,
               cause: err,
-              code: "ETIMEDOUT",
-            }
-          );
+              code: "ECANCELLED",
+            });
+          }
+        }
+        lastError = err;
+        if (err?.code === "ECANCELLED") {
+          throw err;
+        }
+        if (
+          err instanceof ZephHttpError &&
+          err.status &&
+          err.status >= 400 &&
+          err.status < 500
+        ) {
+          throw err;
+        }
+        if (attempt < maxRetries) {
+          let delayMs = 0;
+          if (typeof retryDelay === "function") {
+            delayMs = retryDelay(attempt + 1, err);
+          } else if (typeof retryDelay === "number") {
+            delayMs = retryDelay;
+          } else {
+            delayMs = 0;
+          }
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+          attempt++;
+          continue;
+        } else {
+          throw err;
         }
       }
-      // Apply error interceptors
-      for (const { onError } of interceptors.response.handlers) {
-        if (onError) await onError(err);
-      }
-      if (err instanceof ZephHttpError) {
-        throw err;
-      }
-      throw new ZephHttpError("Network or Client Error", {
-        cause: err,
-        request: finalConfig,
-        code: "ENETWORK",
-      });
-    } finally {
-      // Always clean up controller from the set
-      activeControllers.delete(internalController);
     }
+    throw lastError;
   }
 
   /**

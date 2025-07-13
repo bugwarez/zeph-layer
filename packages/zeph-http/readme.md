@@ -153,6 +153,66 @@ const result = await promise;
 
 ---
 
+## 🔁 Retry Support
+
+zeph-http supports robust, configurable retry logic for failed requests—out of the box.
+
+### Usage Example
+
+```ts
+const client = createZephClient({ baseURL: "https://httpbin.org" });
+
+try {
+  await client.request({
+    path: "/delay/3", // This endpoint waits 3 seconds
+    timeoutMs: 500,    // Force a timeout quickly
+    retry: 2,          // Retry 2 times (3 total attempts)
+    retryDelay: (attempt, error) => {
+      console.log(`Retry attempt #${attempt} after error:`, error.message);
+      return 300; // 300ms between retries
+    },
+  });
+} catch (error) {
+  // After all retries, error is thrown
+  if (error instanceof ZephHttpError) {
+    console.error("Final error after retries:", error.message, error.code);
+  }
+}
+```
+
+### How It Works
+- **retry:** Number of retry attempts for failed requests (default: 0)
+- **retryDelay:** Delay between retries (ms), or a function `(attempt, error) => ms` for custom logic (e.g., exponential backoff)
+- **Retries on:**
+  - Network errors
+  - Timeouts
+  - 5xx HTTP errors
+- **Does NOT retry on:**
+  - 4xx HTTP errors (client errors)
+  - User cancellation
+- **Each retry is a real new attempt** (fresh timeout/cancellation signals)
+- **Error handling:** After all retries, the last error is thrown (with full context and cause chain)
+
+### Comparison: zeph-http vs Axios
+
+| Feature                | zeph-http         | Axios           |
+|------------------------|-------------------|-----------------|
+| Per-request retry      | ✔️ (`retry`)      | ❌ (needs plugin or manual) |
+| Custom retry delay     | ✔️ (`retryDelay`) | ❌ (needs plugin or manual) |
+| Exponential backoff    | ✔️ (function)     | ❌ (needs plugin or manual) |
+| Timeout retry support  | ✔️ (built-in)     | ❌ (manual)      |
+| Error context/cause    | ✔️                | ❌              |
+| TypeScript-first       | ✔️                | Partial         |
+
+**Why is this better?**
+- No plugins or wrappers needed—retry is first-class
+- Full TypeScript support and DX
+- Handles timeouts, network errors, and 5xx out of the box
+- Customizable retry strategies (static, exponential, etc.)
+- Clear error codes and context after all retries
+
+---
+
 ## 🛡️ Error Handling
 
 All errors thrown are instances of `ZephHttpError`—see [ERROR-HANDLING.md](./ERROR-HANDLING.md) for full details.

@@ -121,6 +121,76 @@ async function testUserCancellation() {
   }
 }
 
-testUserCancellation().catch((err) =>
-  console.error("Error while running testJsonParseError():", err)
+// testUserCancellation().catch((err) =>
+//   console.error("Error while running testJsonParseError():", err)
+// );
+
+async function testWithCancelHandle() {
+  const client = createZephClient({
+    baseURL: "https://httpbin.org", // or any slow endpoint
+  });
+  const { promise, cancel } = client.request.withCancel({
+    path: "/delay/3", // httpbin.org/delay/3 waits 3 seconds
+  });
+
+  setTimeout(() => {
+    cancel();
+    console.log("Request cancelled via withCancel handle!");
+  }, 50); // cancel after 50ms
+
+  try {
+    await promise;
+    console.log("Request completed (should not happen)");
+  } catch (error: any) {
+    if (error instanceof ZephHttpError) {
+      console.error("Caught ZephHttpError!");
+      console.error("Message:", error.message);
+      console.error("Code:", error.code);
+      console.error("Cause:", error.cause);
+    } else {
+      console.error("Unknown error:", error);
+    }
+  }
+}
+
+// testWithCancelHandle().catch((err) =>
+//   console.error("Error while running testWithCancelHandle():", err)
+// );
+
+async function testRetrySupport() {
+  const client = createZephClient({
+    baseURL: "https://httpbin.org",
+  });
+  let attempt = 0;
+  const config: {
+    path: string;
+    timeoutMs: number;
+    retry: number;
+    retryDelay: (a: number, err: any) => number;
+  } = {
+    path: "/delay/3", // This endpoint waits 3 seconds
+    timeoutMs: 500, // Force a timeout quickly
+    retry: 2, // Retry 2 times (3 total attempts)
+    retryDelay: (a: number, err: any) => {
+      console.log(`Retry attempt #${a} after error:`, err.message);
+      return 300; // 300ms between retries
+    },
+  };
+  try {
+    await client.request(config);
+    console.log("Request unexpectedly succeeded (should not happen)");
+  } catch (error: any) {
+    if (error instanceof ZephHttpError) {
+      console.error("Final error after retries:");
+      console.error("Message:", error.message);
+      console.error("Code:", error.code);
+      console.error("Cause:", error.cause);
+    } else {
+      console.error("Unknown error:", error);
+    }
+  }
+}
+
+testRetrySupport().catch((err) =>
+  console.error("Error while running testRetrySupport():", err)
 );
