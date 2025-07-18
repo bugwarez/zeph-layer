@@ -5,6 +5,7 @@ import {
   NormalizedZephRequestConfig,
   ZephRequestConfig,
   ZephResponse,
+  ZephResponseType,
 } from "./core/types/http";
 import { combineAbortSignals } from "./core/utils/combineAbortSignals";
 import { wrapInterceptorError } from "./core/utils/interceptorError";
@@ -19,9 +20,73 @@ import {
 } from "./core/utils/guards";
 import { createTimeoutSignal } from "./core/utils/timeout";
 import { RequestWithCancelHandle } from "./core/types/common";
+import type { ZodSchema } from "zod";
 
+/**
+ * Handler called when a request starts.
+ * @param config The request configuration for the outgoing request.
+ */
+export type RequestStartHandler = (config: ZephRequestConfig) => void;
+
+/**
+ * Handler called when a request completes successfully.
+ * @param response The response object.
+ * @param config The request configuration for the completed request.
+ */
+export type RequestEndHandler = (
+  response: ZephResponse<any>,
+  config: ZephRequestConfig
+) => void;
+
+/**
+ * Handler called when a request fails with an error.
+ * @param error The error thrown (always ZephHttpError).
+ * @param config The request configuration for the failed request.
+ */
+export type RequestErrorHandler = (
+  error: ZephHttpError,
+  config: ZephRequestConfig
+) => void;
+
+/**
+ * Creates a new Zeph HTTP client instance.
+ *
+ * @param defaultConfig Default configuration for all requests from this client.
+ * @returns A client instance with request, interceptors, cancellation, and lifecycle hooks.
+ *
+ * @example
+ * const client = createZephClient({ baseURL: "https://api.example.com" });
+ * const res = await client.request({ path: "/todos/1" });
+ */
 export function createZephClient(defaultConfig: ZephClientConfig = {}) {
   const interceptors: Interceptors = createInterceptorManager();
+
+  // --- Lifecycle event handlers ---
+  let onRequestStartHandlers: RequestStartHandler[] = [];
+  let onRequestEndHandlers: RequestEndHandler[] = [];
+  let onErrorHandlers: RequestErrorHandler[] = [];
+
+  /**
+   * Registers a handler to be called when any request starts.
+   * @param fn The handler function.
+   */
+  function onRequestStart(fn: RequestStartHandler) {
+    onRequestStartHandlers.push(fn);
+  }
+  /**
+   * Registers a handler to be called when any request completes successfully.
+   * @param fn The handler function.
+   */
+  function onRequestEnd(fn: RequestEndHandler) {
+    onRequestEndHandlers.push(fn);
+  }
+  /**
+   * Registers a handler to be called when any request fails with an error.
+   * @param fn The handler function.
+   */
+  function onError(fn: RequestErrorHandler) {
+    onErrorHandlers.push(fn);
+  }
 
   /**
    * Tracks all in-flight AbortControllers for global cancellation.
@@ -31,9 +96,15 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
   /**
    * Sends an HTTP request using the Zeph client configuration.
    * Handles per-request and global cancellation, timeout, interceptors, and retry logic.
+   * Supports optional runtime response validation with Zod via responseSchema.
    * @template T - The expected response data type.
-   * @param {ZephRequestConfig} config - The request configuration.
-   * @returns {Promise<ZephResponse<T>>} - The response promise.
+   * @param config The request configuration.
+   * @returns The response promise.
+   *
+   * @example
+   * import { z } from "zod";
+   * const todoSchema = z.object({ id: z.number(), title: z.string() });
+   * const res = await client.request({ path: "/todos/1", responseSchema: todoSchema });
    */
   async function request<T = any>(
     config: ZephRequestConfig
@@ -60,6 +131,12 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
       } catch (err) {
         throw wrapInterceptorError(err, "request", i);
       }
+    }
+
+    for (const handler of onRequestStartHandlers) {
+      try {
+        handler(config);
+      } catch {}
     }
 
     const {
@@ -163,23 +240,37 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
         let data: T | undefined;
         const resHeaders: Record<string, string> = {};
 
-        try {
-          data = await res.json();
-        } catch (jsonErr) {
-          let rawText: string | undefined;
-          try {
-            rawText = await res.text();
-          } catch {
-            rawText = undefined;
-          }
-          throw new ZephHttpError("Failed to parse JSON response", {
-            status: res.status,
-            headers: resHeaders,
-            request: finalConfig,
-            data: rawText,
-            cause: jsonErr,
-            code: "EJSONPARSE",
-          });
+        switch (finalConfig.responseType) {
+          case "text":
+            data = (await res.text()) as T;
+            break;
+          case "blob":
+            data = (await res.blob()) as T;
+            break;
+          case "arrayBuffer":
+            data = (await res.arrayBuffer()) as T;
+            break;
+          case "json":
+          default:
+            try {
+              data = (await res.json()) as T;
+            } catch (jsonErr) {
+              let rawText: string | undefined;
+              try {
+                rawText = await res.text();
+              } catch {
+                rawText = undefined;
+              }
+              throw new ZephHttpError("Failed to parse JSON response", {
+                status: res.status,
+                headers: resHeaders,
+                request: finalConfig,
+                data: rawText,
+                cause: jsonErr,
+                code: "EJSONPARSE",
+              });
+            }
+            break;
         }
 
         res.headers.forEach((v, k) => (resHeaders[k] = v));
@@ -200,6 +291,24 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           headers: resHeaders,
         };
 
+        // Optional Zod validation of response
+        if (config.responseSchema) {
+          const result = (config.responseSchema as ZodSchema<any>).safeParse(
+            response.data
+          );
+          if (!result.success) {
+            throw new ZephHttpError("Response validation failed", {
+              status: res.status,
+              headers: resHeaders,
+              request: finalConfig,
+              data: result.error.issues,
+              code: "EZODRESPONSE",
+            });
+          }
+          // Use parsed data for type safety
+          response.data = result.data;
+        }
+
         //! Applying response success interceptors
         for (let i = 0; i < interceptors.response.handlers.length; i++) {
           const { onSuccess } = interceptors.response.handlers[i];
@@ -208,6 +317,11 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           } catch (err) {
             throw wrapInterceptorError(err, "response", i);
           }
+        }
+        for (const handler of onRequestEndHandlers) {
+          try {
+            handler(response, finalConfig);
+          } catch {}
         }
         return response;
       } catch (err: any) {
@@ -268,8 +382,12 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
   /**
    * Ergonomic per-request cancellation: returns a handle with promise, cancel, and signal.
    * @template T - The expected response data type.
-   * @param {ZephRequestConfig} config - The request configuration.
-   * @returns {RequestWithCancelHandle<T>} - The handle for the request.
+   * @param config The request configuration.
+   * @returns The handle for the request (promise, cancel, signal).
+   *
+   * @example
+   * const { promise, cancel } = client.request.withCancel({ path: "/slow" });
+   * cancel();
    */
   request.withCancel = function withCancel<T = any>(
     config: ZephRequestConfig
@@ -286,6 +404,9 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
   /**
    * Cancels all in-flight requests for this client instance.
    * Aborts all tracked AbortControllers and clears the set.
+   *
+   * @example
+   * client.cancelAll();
    */
   function cancelAll(): void {
     for (const controller of activeControllers) {
@@ -298,7 +419,11 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
     request,
     interceptors,
     cancelAll,
+    onRequestStart,
+    onRequestEnd,
+    onError,
   };
 }
 
 export { ZephHttpError } from "./core/types/error";
+export { ZephResponseType } from "./core/types/http";

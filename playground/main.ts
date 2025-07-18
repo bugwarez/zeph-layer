@@ -1,4 +1,5 @@
-import { createZephClient, ZephHttpError } from "zeph-http";
+import { createZephClient, ZephHttpError, ZephResponseType } from "zeph-http";
+import { z } from "zod";
 
 async function testGet() {
   const client = createZephClient({
@@ -191,6 +192,143 @@ async function testRetrySupport() {
   }
 }
 
-testRetrySupport().catch((err) =>
-  console.error("Error while running testRetrySupport():", err)
+// testRetrySupport().catch((err) =>
+//   console.error("Error while running testRetrySupport():", err)
+// );
+
+async function testResponseTypes() {
+  const client = createZephClient({ baseURL: "https://httpbin.org" });
+  // JSON
+  const jsonRes = await client.request<{ url: string }>({
+    path: "/json",
+    responseType: "json",
+  });
+  console.log("[responseType=json]", jsonRes.data);
+  // Text
+  const textRes = await client.request<string>({
+    path: "/html",
+    responseType: "text",
+  });
+  console.log("[responseType=text]", textRes.data.slice(0, 60) + "...");
+  // Blob (browser only, but test for type)
+  try {
+    const blobRes = await client.request<Blob>({
+      path: "/image/png",
+      responseType: "blob",
+    });
+    console.log(
+      "[responseType=blob]",
+      blobRes.data instanceof Blob ? "Blob OK" : typeof blobRes.data
+    );
+  } catch (e) {
+    console.warn("[responseType=blob] Not supported in this environment");
+  }
+  // ArrayBuffer
+  try {
+    const abRes = await client.request<ArrayBuffer>({
+      path: "/image/png",
+      responseType: "arrayBuffer",
+    });
+    console.log(
+      "[responseType=arrayBuffer]",
+      abRes.data instanceof ArrayBuffer ? "ArrayBuffer OK" : typeof abRes.data
+    );
+  } catch (e) {
+    console.warn(
+      "[responseType=arrayBuffer] Not supported in this environment"
+    );
+  }
+}
+
+// testResponseTypes().catch((err) =>
+//   console.error("Error while running testResponseTypes():", err)
+// );
+
+async function testBaseUrlOverride() {
+  const client = createZephClient({
+    baseURL: "https://jsonplaceholder.typicode.com",
+  });
+  // Uses instance baseURL
+  const res1 = await client.request<{ id: number }>({ path: "/todos/1" });
+  console.log("[baseURL=instance]", res1.data);
+  // Override baseURL per request
+  const res2 = await client.request<{ url: string }>({
+    path: "/get",
+    baseURL: "https://httpbin.org",
+    responseType: "json",
+  });
+  console.log("[baseURL=per-request]", res2.data);
+}
+
+// testBaseUrlOverride().catch((err) =>
+//   console.error("Error while running testBaseUrlOverride():", err)
+// );
+
+async function testRequestLifecycleHooks() {
+  const client = createZephClient({ baseURL: "https://httpbin.org" });
+  client.onRequestStart((config) => {
+    console.log("[onRequestStart]", config.path, config);
+  });
+  client.onRequestEnd((response, config) => {
+    console.log("[onRequestEnd]", config.path, response.status);
+  });
+  client.onError((error, config) => {
+    console.log("[onError]", config.path, error.message);
+  });
+  // Successful request
+  await client.request({ path: "/get" });
+  // Failing request (404)
+  try {
+    await client.request({ path: "/status/404" });
+  } catch {}
+}
+
+// testRequestLifecycleHooks().catch((err) =>
+//   console.error("Error while running testRequestLifecycleHooks():", err)
+// );
+
+async function testResponseSchema() {
+  const client = createZephClient({ baseURL: "https://httpbin.org" });
+  // Success: schema matches actual response
+  const matchingSchema = z.object({
+    slideshow: z.object({
+      author: z.string(),
+      date: z.string(),
+      slides: z.array(z.any()),
+      title: z.string(),
+    }),
+  });
+  try {
+    const res = await client.request({
+      path: "/json",
+      responseType: "json",
+      responseSchema: matchingSchema,
+    });
+    console.log("[responseSchema=success] Validation passed! Data:", res.data);
+  } catch (e) {
+    console.error("[responseSchema=success] Should not fail!", e);
+  }
+  // Failure: schema does not match actual response
+  const failingSchema = z.object({ notAField: z.string() });
+  try {
+    await client.request({
+      path: "/json",
+      responseType: "json",
+      responseSchema: failingSchema,
+    });
+    console.log("[responseSchema=failure] Should not reach here!");
+  } catch (e: any) {
+    if (e instanceof ZephHttpError && e.code === "EZODRESPONSE") {
+      console.log(
+        "[responseSchema=failure] Caught validation error as expected:",
+        e.data
+      );
+    } else {
+      console.error("[responseSchema=failure] Unexpected error:", e);
+    }
+  }
+}
+
+testResponseSchema().catch((err) =>
+  console.error("Error while running testResponseSchema():", err)
 );

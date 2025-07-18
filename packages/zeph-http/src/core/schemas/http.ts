@@ -24,6 +24,7 @@ export const ZephRequestConfigSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
   params: z.record(z.string(), QueryParamValue).optional(),
   body: z.any().optional(),
+  responseType: z.enum(["json", "text", "blob", "arrayBuffer"]).optional(),
   timeoutMs: z
     .number()
     .int()
