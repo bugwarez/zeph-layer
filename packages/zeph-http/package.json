@@ -5,23 +5,51 @@
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "vitest --ui",
     "test:ci": "vitest run --coverage",
-    "build": "rollup -c"
+    "build": "rollup -c",
+    "analyze": "rollup -c --plugin visualizer",
+    "prepublishOnly": "npm run build && npm run test:ci && npm run lint"
   },
   "sideEffects": false,
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "http",
+    "fetch",
+    "axios",
+    "request",
+    "typescript",
+    "esm",
+    "cjs",
+    "zeph",
+    "client",
+    "api",
+    "performant",
+    "modular"
+  ],
+  "author": "Tunahan Gündüz",
+  "license": "MIT",
+  "description": "A modern, performant, and type-safe HTTP client for TypeScript/JavaScript. Axios-like API with advanced features, ESM/CJS support, and tree-shakable design.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bugwarez/zeph-layer",
+    "directory": "packages/zeph-http"
+  },
+  "engines": {
+    "node": ">=14"
+  },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.1.4",
     "@types/node": "^24.0.13",
     "@vitest/ui": "^3.2.4",
     "jsdom": "^26.1.0",
     "rollup": "^4.44.2",
+    "rollup-plugin-visualizer": "^6.0.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
