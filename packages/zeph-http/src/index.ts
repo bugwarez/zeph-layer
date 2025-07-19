@@ -347,6 +347,14 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
         }
         lastError = err;
         if (err?.code === "ECANCELLED") {
+          // Call onError for cancellation errors before throwing
+          if (err instanceof ZephHttpError) {
+            for (const handler of onErrorHandlers) {
+              try {
+                handler(err, finalConfig);
+              } catch {}
+            }
+          }
           throw err;
         }
         if (
@@ -355,6 +363,12 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           err.status >= 400 &&
           err.status < 500
         ) {
+          // Call onError for 4xx errors before throwing
+          for (const handler of onErrorHandlers) {
+            try {
+              handler(err, finalConfig);
+            } catch {}
+          }
           throw err;
         }
         if (attempt < maxRetries) {
@@ -372,8 +386,24 @@ export function createZephClient(defaultConfig: ZephClientConfig = {}) {
           attempt++;
           continue;
         } else {
+          // Call onError for the final error after all retries
+          if (err instanceof ZephHttpError) {
+            for (const handler of onErrorHandlers) {
+              try {
+                handler(err, finalConfig);
+              } catch {}
+            }
+          }
           throw err;
         }
+      }
+    }
+    // Call onError for the last error if not already thrown
+    if (lastError instanceof ZephHttpError) {
+      for (const handler of onErrorHandlers) {
+        try {
+          handler(lastError, finalConfig);
+        } catch {}
       }
     }
     throw lastError;

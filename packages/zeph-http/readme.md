@@ -274,6 +274,83 @@ client.interceptors.response.use((response) => {
 });
 ```
 
+### ⚠️ Important: Response Interceptor Signature
+
+The `interceptors.response.use` method **requires two function arguments**:
+- The first handles successful responses.
+- The second handles errors.
+
+**Do not pass `undefined` as the first argument.**
+If you only want to handle errors, use a "pass-through" function for the first argument:
+
+```ts
+// ❌ Incorrect: This will throw a runtime error!
+client.interceptors.response.use(
+  undefined,
+  (error) => {
+    // error handling
+  }
+);
+
+// ✅ Correct: Use a pass-through for the first argument
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // error handling
+    throw error;
+  }
+);
+```
+
+### Real-World Example: Auth, Logging, and Error Handling
+
+```ts
+client.interceptors.request.use((config) => {
+  // Add auth token
+  const token = getToken();
+  return {
+    ...config,
+    headers: {
+      ...config.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  };
+});
+
+client.interceptors.response.use(
+  (response) => {
+    // Log all responses
+    console.log("Response received:", response);
+    return response;
+  },
+  (error) => {
+    // Handle 401 Unauthorized globally
+    if (error instanceof ZephHttpError && error.status === 401) {
+      redirectToLogin();
+    }
+    throw error;
+  }
+);
+```
+
+> **Tip:** Always return or throw from your interceptors to ensure the request chain continues as expected.
+
+---
+
+**Why?**
+This pattern matches Axios, but is stricter for type safety and DX.
+Passing `undefined` as the first argument will cause a runtime error:
+`TypeError: t is not a function`
+
+---
+
+### Summary Table
+
+| Argument Position | Purpose                | Example                        |
+|-------------------|------------------------|--------------------------------|
+| 1st               | Success handler        | `(response) => response`       |
+| 2nd               | Error handler (optional) | `(error) => { ... }`           |
+
 ---
 
 ## ⏱️ Timeouts & Cancellation
@@ -465,10 +542,24 @@ const res2 = await client.request({
 
 ## 🚦 Request Lifecycle Hooks (onRequestStart, onRequestEnd, onError)
 
-zeph-http provides first-class hooks to track the lifecycle of every HTTP request. These are not available in Axios, and are a major DX win for modern apps, devtools, and analytics.
+zeph-http provides **first-class lifecycle hooks** to track every HTTP request globally. These hooks are a major DX win for modern apps, devtools, analytics, and robust error handling. Unlike Axios, zeph-http's hooks are built-in and type-safe.
 
-### What are they?
-Lifecycle hooks let you globally track when any request starts, ends, or errors—no matter where it originates in your app.
+### What are the lifecycle hooks?
+
+| Hook             | When it Fires                                                                 | Arguments                                 |
+|------------------|-------------------------------------------------------------------------------|-------------------------------------------|
+| onRequestStart   | Immediately before any request is sent                                        | (config)                                  |
+| onRequestEnd     | After a request completes successfully (2xx response, after all interceptors) | (response, config)                        |
+| onError          | When a request fails for **any reason** (see below)                           | (error, config)                           |
+
+**onError fires for:**
+- HTTP errors (non-2xx, e.g. 404, 500)
+- JSON parse errors
+- Timeouts
+- User cancellations
+- Network/CORS errors
+- Interceptor errors
+- Zod validation errors
 
 ### Real-World Use Cases
 - **Global loading indicators:** Show/hide a spinner or progress bar for all network activity.
@@ -484,25 +575,65 @@ const client = createZephClient({ baseURL: "https://api.example.com" });
 
 client.onRequestStart((config) => {
   // Show global loader, log, or track analytics
-  console.log("Request started:", config.path);
+  console.log("[onRequestStart]", config.path, config);
 });
 
 client.onRequestEnd((response, config) => {
   // Hide loader, log response, etc.
-  console.log("Request finished:", config.path, response.status);
+  console.log("[onRequestEnd]", config.path, response.status);
 });
 
 client.onError((error, config) => {
   // Show error toast, log to Sentry, etc.
-  console.error("Request error:", config.path, error.message);
+  if (error instanceof ZephHttpError) {
+    console.error(
+      `[onError] ${config.path} ZephHttpError: ${error.message} (status: ${error.status}, code: ${error.code})`
+    );
+  } else {
+    console.error("[onError]", config.path, "Unknown error:", error);
+  }
 });
+
+// Example requests
+client.request({ path: "/get" })
+  .then((res) => console.log("[then] /get data:", res.data))
+  .catch((err) => console.log("[catch] /get error:", err));
+
+client.request({ path: "/status/404" })
+  .then((res) => console.log("[then] /status/404 data:", res.data))
+  .catch((err) => console.log("[catch] /status/404 error:", err));
 ```
 
-### DX Notes & Best Practices
-- **Zero overhead** if unused—handlers are only called if registered.
-- **Type-safe**: All handlers receive the correct config, response, or error types.
-- **Global scope**: Use for app-wide behaviors (loading, logging, analytics, devtools).
-- **Per-request logic**: Use interceptors for per-request/response transformations.
+### Example Output
+```
+[onRequestStart] /get { ... }
+[onRequestStart] /status/404 { ... }
+[onRequestEnd] /get 200
+[then] /get data: { ... }
+[onError] /status/404 ZephHttpError: Failed to parse JSON response (status: 404, code: EJSONPARSE)
+[catch] /status/404 ZephHttpError: Failed to parse JSON response (status: 404, code: EJSONPARSE)
+```
+
+### Best Practices & Tips
+- Use `onRequestStart`/`onRequestEnd` for global loading UX (show/hide spinner).
+- Use `onError` for global error toasts, Sentry logging, or analytics.
+- Combine with interceptors for per-request logic (e.g., auth, response transforms).
+- All hooks are **zero overhead** if unused—register only what you need.
+- All errors passed to `onError` are guaranteed to be `ZephHttpError` (with code, status, etc.).
+- You can register multiple handlers for each hook.
+- Use these hooks for devtools, debugging, or to build custom request monitors.
+
+### Advanced Usage
+- Track request durations by storing a timestamp in `onRequestStart` and comparing in `onRequestEnd`/`onError`.
+- Use `onError` to trigger retries, fallback UIs, or advanced error recovery.
+- Integrate with analytics or monitoring tools for full API observability.
+
+### Troubleshooting
+- **Multiple requests in parallel:** Each request fires its own lifecycle hooks independently.
+- **Want per-request logic?** Use interceptors for request/response transformation; use hooks for global side effects.
+
+> **Tip:** Lifecycle hooks are global to the client instance. For per-request logic, use interceptors.
+
 ---
 
 ## 🛡️ Error Handling
